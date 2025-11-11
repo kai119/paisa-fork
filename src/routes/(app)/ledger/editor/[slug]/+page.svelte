@@ -161,8 +161,7 @@
       if (editor) {
         editor.destroy();
       }
-
-      editor = createEditor(selectedFile.content, editorDom, {
+      editor = createEditor(selectedFile.name, selectedFile.content, editorDom, {
         keybindings,
         autocompletions: {
           string: accounts,

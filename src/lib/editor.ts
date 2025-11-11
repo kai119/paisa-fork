@@ -8,6 +8,7 @@ import { basicSetup } from "./editor/base";
 import { history, undoDepth, redoDepth } from "@codemirror/commands";
 import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import _ from "lodash";
+import {get} from 'svelte/store'
 import { editorState, initialEditorState } from "../store";
 import {
   CompletionContext,
@@ -23,9 +24,10 @@ export { editorState } from "../store";
 
 async function lint(editor: EditorView): Promise<Diagnostic[]> {
   const doc = editor.state.doc;
+  const fileName = get(editorState).fileName;
   const response = await ajax("/api/editor/validate", {
     method: "POST",
-    body: JSON.stringify({ name: "", content: editor.state.doc.toString() }),
+    body: JSON.stringify({ name: fileName, content: editor.state.doc.toString() }),
     background: true
   });
 
@@ -63,6 +65,7 @@ export function createDiffEditor(oldContent: string, newContent: string, dom: El
 }
 
 export function createEditor(
+  name: string,
   content: string,
   dom: Element,
   opts: {
@@ -71,7 +74,10 @@ export function createEditor(
     keybindings?: readonly KeyBinding[];
   }
 ) {
-  editorState.set(initialEditorState);
+  console.log(name);
+  var newEditorState = initialEditorState;
+  newEditorState.fileName = name;
+  editorState.set(newEditorState);
 
   return new EditorView({
     extensions: [

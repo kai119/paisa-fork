@@ -18,6 +18,7 @@ interface EditorState {
   redoDepth: number;
   errors: LedgerFileError[];
   output: string;
+  fileName: string;
 }
 
 export const initialEditorState: EditorState = {
@@ -25,7 +26,8 @@ export const initialEditorState: EditorState = {
   undoDepth: 0,
   redoDepth: 0,
   errors: [],
-  output: ""
+  output: "",
+  fileName: ""
 };
 
 interface SheetEditorState {

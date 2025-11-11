@@ -135,9 +135,9 @@ func ValidateFile(file LedgerFile) gin.H {
 }
 
 func validateFile(file LedgerFile) ([]ledger.LedgerFileError, string, error) {
-	path := config.GetJournalPath()
+	dir := filepath.Dir(filepath.Dir(config.GetJournalPath()) + "/" + file.Name)
 
-	tmpfile, err := os.CreateTemp(filepath.Dir(path), "paisa-tmp-")
+	tmpfile, err := os.CreateTemp(dir, "paisa-tmp-")
 	if err != nil {
 		log.Fatal(err)
 	}

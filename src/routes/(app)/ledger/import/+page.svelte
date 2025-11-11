@@ -44,7 +44,7 @@
     selectedTemplate = templates[0];
     saveAsName = selectedTemplate.name;
     templateEditor = createTemplateEditor(selectedTemplate.content, templateEditorDom);
-    previewEditor = createPreviewEditor(preview, previewEditorDom, { readonly: true });
+    previewEditor = createPreviewEditor("", preview, previewEditorDom, { readonly: true });
   });
 
   $: saveAsNameDuplicate = !!_.find(templates, { name: saveAsName, template_type: "custom" });
