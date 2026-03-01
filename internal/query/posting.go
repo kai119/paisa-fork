@@ -57,6 +57,11 @@ func (q *Query) UntilThisMonthEnd() *Query {
 	return q
 }
 
+func (q *Query) UntilThisBudgetPeriodEnd() *Query {
+	q.context = q.context.Where("date <= ?", utils.BudgetPeriodEnd(utils.Now()))
+	return q
+}
+
 func (q *Query) LastNMonths(n int) *Query {
 	monthStart := utils.BeginningOfMonth(utils.Now())
 	start := monthStart.AddDate(0, -(n - 1), 0)

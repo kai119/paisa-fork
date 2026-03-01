@@ -40,8 +40,8 @@ func GetBudget(db *gorm.DB) gin.H {
 }
 
 func GetCurrentBudget(db *gorm.DB) gin.H {
-	forecastPostings := query.Init(db).Like("Expenses:%").Forecast().UntilThisMonthEnd().All()
-	expenses := query.Init(db).Like("Expenses:%").UntilThisMonthEnd().All()
+	forecastPostings := query.Init(db).Like("Expenses:%").Forecast().UntilThisBudgetPeriodEnd().All()
+	expenses := query.Init(db).Like("Expenses:%").UntilThisBudgetPeriodEnd().All()
 	return computeBudet(db, forecastPostings, expenses)
 }
 
@@ -49,8 +49,8 @@ func computeBudet(db *gorm.DB, forecastPostings, expensesPostings []posting.Post
 	checkingBalance := accounting.CostSum(query.Init(db).AccountPrefix("Assets:Checking").All())
 	availableForBudgeting := checkingBalance
 
-	forecasts := utils.GroupByMonth(forecastPostings)
-	expenses := utils.GroupByMonth(expensesPostings)
+	forecasts := utils.GroupByBudgetPeriod(forecastPostings)
+	expenses := utils.GroupByBudgetPeriod(expensesPostings)
 
 	accounts := lo.Uniq(lo.Map(forecastPostings, func(p posting.Posting, _ int) string {
 		return p.Account
@@ -60,19 +60,24 @@ func computeBudet(db *gorm.DB, forecastPostings, expensesPostings []posting.Post
 	budgetsByMonth := make(map[string]Budget)
 	balance := make(map[string]decimal.Decimal)
 
-	currentMonth := lo.Must(time.ParseInLocation("2006-01", utils.Now().Format("2006-01"), config.TimeZone()))
+	currentPeriodStart := utils.BudgetPeriodStart(utils.Now())
 
 	if len(forecastPostings) > 0 {
-		start := utils.BeginningOfMonth(forecastPostings[0].Date)
-		end := utils.EndOfMonth(forecastPostings[len(forecastPostings)-1].Date)
+		start := utils.BudgetPeriodStart(forecastPostings[0].Date)
+		end := utils.BudgetPeriodStart(forecastPostings[len(forecastPostings)-1].Date)
+		// Always process at least through the current period, even when no
+		// forecast posting exists for it yet (e.g. user hasn't defined next month's budget).
+		if end.Before(currentPeriodStart) {
+			end = currentPeriodStart
+		}
 
-		for start := start; start.Before(end) || start.Equal(end); start = start.AddDate(0, 1, 0) {
-			month := start.Format("2006-01")
+		for curr := start; curr.Before(end) || curr.Equal(end); curr = curr.AddDate(0, 1, 0) {
+			periodKey := utils.BudgetPeriodKey(curr)
 			var accountBudgets []AccountBudget
 
-			forecastsByMonth := forecasts[month]
-			date := lo.Must(time.ParseInLocation("2006-01", month, config.TimeZone()))
-			expensesByMonth, ok := expenses[month]
+			forecastsByMonth := forecasts[periodKey]
+			date := curr
+			expensesByMonth, ok := expenses[periodKey]
 			if !ok {
 				expensesByMonth = []posting.Posting{}
 			}
@@ -87,7 +92,7 @@ func computeBudet(db *gorm.DB, forecastPostings, expensesPostings []posting.Post
 					es = []posting.Posting{}
 				}
 
-				budget := buildBudget(date, account, balance[account], fs, es, date.Before(currentMonth))
+				budget := buildBudget(date, account, balance[account], fs, es, date.Before(currentPeriodStart))
 				if budget.Available.IsPositive() {
 					balance[account] = budget.Available
 				} else {
@@ -116,7 +121,7 @@ func computeBudet(db *gorm.DB, forecastPostings, expensesPostings []posting.Post
 			availableForBudgeting = availableForBudgeting.Sub(availableThisMonth)
 			endOfMonthBalance := availableForBudgeting
 
-			budgetsByMonth[month] = Budget{
+			budgetsByMonth[periodKey] = Budget{
 				Date:               date,
 				Accounts:           accountBudgets,
 				EndOfMonthBalance:  endOfMonthBalance,
@@ -130,6 +135,7 @@ func computeBudet(db *gorm.DB, forecastPostings, expensesPostings []posting.Post
 		"budgetsByMonth":        budgetsByMonth,
 		"checkingBalance":       checkingBalance,
 		"availableForBudgeting": availableForBudgeting,
+		"currentPeriod":         utils.BudgetPeriodKey(utils.Now()),
 	}
 }
 

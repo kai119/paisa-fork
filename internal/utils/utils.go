@@ -101,6 +101,47 @@ func EndOfMonth(date time.Time) time.Time {
 	return EndOfDay(toDate(date.AddDate(0, 1, -date.Day())))
 }
 
+// BudgetPeriodStart returns the start of the budget period containing date.
+func BudgetPeriodStart(date time.Time) time.Time {
+	startDay := config.GetConfig().Budget.StartDay
+	if startDay <= 1 {
+		return BeginningOfMonth(date)
+	}
+	if date.Day() >= startDay {
+		return toDate(time.Date(date.Year(), date.Month(), startDay, 0, 0, 0, 0, config.TimeZone()))
+	}
+	prev := date.AddDate(0, -1, 0)
+	return toDate(time.Date(prev.Year(), prev.Month(), startDay, 0, 0, 0, 0, config.TimeZone()))
+}
+
+// BudgetPeriodEnd returns the last instant of the budget period containing date.
+func BudgetPeriodEnd(date time.Time) time.Time {
+	start := BudgetPeriodStart(date)
+	return EndOfDay(start.AddDate(0, 1, 0).AddDate(0, 0, -1))
+}
+
+// BudgetPeriodKey returns the "YYYY-MM" key for the budget period containing date.
+// When start_day > 1, the key is shifted one month forward so that budget entries
+// dated on the 1st of a month (e.g. "~ Monthly in 2026/02/01") appear under the
+// matching month label ("Feb 2026"), regardless of what day the period actually starts.
+func BudgetPeriodKey(date time.Time) string {
+	start := BudgetPeriodStart(date)
+	if config.GetConfig().Budget.StartDay > 1 {
+		return start.AddDate(0, 1, 0).Format("2006-01")
+	}
+	return start.Format("2006-01")
+}
+
+// GroupByBudgetPeriod groups items by budget-period key ("YYYY-MM" of period start).
+func GroupByBudgetPeriod[G GroupableByDate](groupables []G) map[string][]G {
+	grouped := make(map[string][]G)
+	for _, g := range groupables {
+		key := BudgetPeriodKey(g.GroupDate())
+		grouped[key] = append(grouped[key], g)
+	}
+	return grouped
+}
+
 func IsWithDate(date time.Time, start time.Time, end time.Time) bool {
 	return (date.Equal(start) || date.After(start)) && (date.Before(end) || date.Equal(end))
 }

@@ -107,6 +107,7 @@ type ScheduleAL struct {
 
 type Budget struct {
 	Rollover BoolType `json:"rollover" yaml:"rollover"`
+	StartDay int      `json:"start_day" yaml:"start_day"`
 }
 
 type AllocationTarget struct {
@@ -171,7 +172,7 @@ var defaultConfig = Config{
 	AmountAlignmentColumn:      52,
 	Locale:                     "en-IN",
 	TimeZone:                   "",
-	Budget:                     Budget{Rollover: Yes},
+	Budget:                     Budget{Rollover: Yes, StartDay: 1},
 	FinancialYearStartingMonth: 4,
 	Strict:                     No,
 	WeekStartingDay:            0,

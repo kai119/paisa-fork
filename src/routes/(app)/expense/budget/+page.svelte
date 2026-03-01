@@ -10,17 +10,18 @@
     isMobile
   } from "$lib/utils";
   import _ from "lodash";
+  import dayjs from "dayjs";
   import { onMount } from "svelte";
   import { month, setAllowedDateRange } from "../../../../store";
   import COLORS from "$lib/colors";
   import LevelItem from "$lib/components/LevelItem.svelte";
   import ZeroState from "$lib/components/ZeroState.svelte";
 
-  const monthStart = now().startOf("month");
   let budgetsByMonth: Record<string, Budget> = {};
   let currentMonthAccountBudgets: AccountBudget[] = [];
   let currentMonthBudget: Budget;
   let checkingBalance: number, availableForBudgeting: number;
+  let currentPeriod = now().format("YYYY-MM");
   let isEmpty = false;
 
   $: {
@@ -29,14 +30,21 @@
   }
 
   onMount(async () => {
-    ({ budgetsByMonth, checkingBalance, availableForBudgeting } = await ajax("/api/budget"));
+    ({ budgetsByMonth, checkingBalance, availableForBudgeting, currentPeriod } = await ajax(
+      "/api/budget"
+    ));
     setAllowedDateRange(
       _.chain(budgetsByMonth)
         .values()
         .flatten()
         .map((b) => b.date)
+        .concat([dayjs(currentPeriod, "YYYY-MM")])
         .value()
     );
+
+    if (budgetsByMonth[currentPeriod]) {
+      month.set(currentPeriod);
+    }
 
     if (_.isEmpty(budgetsByMonth)) {
       isEmpty = true;
@@ -57,7 +65,7 @@
               value={formatCurrency(Math.abs(availableForBudgeting))}
             />
 
-            {#if currentMonthBudget.date.isSameOrAfter(monthStart)}
+            {#if $month >= currentPeriod}
               <LevelItem
                 title="Available for Spending"
                 value={formatCurrency(currentMonthBudget.availableThisMonth)}

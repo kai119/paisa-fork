@@ -633,6 +633,7 @@ export function ajax(route: "/api/budget"): Promise<{
   budgetsByMonth: { [key: string]: Budget };
   checkingBalance: number;
   availableForBudgeting: number;
+  currentPeriod: string;
 }>;
 
 export function ajax(route: "/api/cash_flow"): Promise<{ cash_flows: CashFlow[] }>;
