@@ -46,9 +46,10 @@ func computeNetworth(db *gorm.DB, postings []posting.Posting) Networth {
 		return networth
 	}
 
-	var investment decimal.Decimal = decimal.Zero
-	var withdrawal decimal.Decimal = decimal.Zero
-	var balance decimal.Decimal = decimal.Zero
+	var investment  decimal.Decimal = decimal.Zero
+	var withdrawal  decimal.Decimal = decimal.Zero
+	var netBalance  decimal.Decimal = decimal.Zero
+	var balance     decimal.Decimal = decimal.Zero
 
 	now := utils.EndOfToday()
 	for _, p := range postings {
@@ -56,6 +57,7 @@ func computeNetworth(db *gorm.DB, postings []posting.Posting) Networth {
 		isInterestRepayment := service.IsInterestRepayment(db, p)
 		isStockSplit := service.IsStockSplit(db, p)
 		isCapitalGains := service.IsCapitalGains(p)
+		isInvestment := utils.IsSameOrParent(p.Account, "Assets:Investments")
 
 		if isInterest || isInterestRepayment {
 			balance = balance.Add(p.Amount)
@@ -70,19 +72,22 @@ func computeNetworth(db *gorm.DB, postings []posting.Posting) Networth {
 				withdrawal = withdrawal.Add(p.Amount.Neg())
 			}
 
-			balance = balance.Add(service.GetMarketPrice(db, p, now))
+			mp := service.GetMarketPrice(db, p, now)
+			balance = balance.Add(mp)
+			if isInvestment {
+				netBalance = netBalance.Add(mp)
+			}
 		}
 	}
 
 	gain := balance.Add(withdrawal).Sub(investment)
-	netInvestment := investment.Sub(withdrawal)
 	networth = Networth{
 		Date:                now,
 		InvestmentAmount:    investment,
 		WithdrawalAmount:    withdrawal,
 		GainAmount:          gain,
 		BalanceAmount:       balance,
-		NetInvestmentAmount: netInvestment,
+		NetInvestmentAmount: netBalance,
 	}
 
 	return networth
@@ -98,10 +103,12 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 	}
 
 	type RunningSum struct {
-		investment   decimal.Decimal
-		withdrawal   decimal.Decimal
-		balance      decimal.Decimal
-		balanceUnits decimal.Decimal
+		investment      decimal.Decimal
+		withdrawal      decimal.Decimal
+		netBalance      decimal.Decimal
+		netBalanceUnits decimal.Decimal
+		balance         decimal.Decimal
+		balanceUnits    decimal.Decimal
 	}
 
 	accumulator := make(map[string]RunningSum)
@@ -114,6 +121,7 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 
 			isInterest := service.IsInterest(db, p)
 			isCapitalGains := service.IsCapitalGains(p)
+			isInvestment := utils.IsSameOrParent(p.Account, "Assets:Investments")
 
 			if p.Amount.GreaterThan(decimal.Zero) && !isInterest {
 				rs.investment = rs.investment.Add(p.Amount)
@@ -124,18 +132,24 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 			}
 
 			if !isCapitalGains {
-				rs.balance = rs.balance.Add(service.GetMarketPrice(db, p, start))
+				mp := service.GetMarketPrice(db, p, start)
+				rs.balance = rs.balance.Add(mp)
 				rs.balanceUnits = rs.balanceUnits.Add(p.Quantity)
+				if isInvestment {
+					rs.netBalance = rs.netBalance.Add(mp)
+					rs.netBalanceUnits = rs.netBalanceUnits.Add(p.Quantity)
+				}
 			}
 
 			accumulator[p.Commodity] = rs
 
 		}
 
-		var investment decimal.Decimal = decimal.Zero
-		var withdrawal decimal.Decimal = decimal.Zero
-		var balance decimal.Decimal = decimal.Zero
-		var balanceUnits decimal.Decimal = decimal.Zero
+		var investment     decimal.Decimal = decimal.Zero
+		var withdrawal     decimal.Decimal = decimal.Zero
+		var netBalanceAgg  decimal.Decimal = decimal.Zero
+		var balance        decimal.Decimal = decimal.Zero
+		var balanceUnits   decimal.Decimal = decimal.Zero
 
 		for commodity, rs := range accumulator {
 			investment = investment.Add(rs.investment)
@@ -143,6 +157,7 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 
 			if utils.IsCurrency(commodity) {
 				balance = balance.Add(rs.balance)
+				netBalanceAgg = netBalanceAgg.Add(rs.netBalance)
 			} else {
 				if computeBalanceUnits {
 					balanceUnits = balanceUnits.Add(rs.balanceUnits)
@@ -150,15 +165,16 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 				price := service.GetUnitPrice(db, commodity, start)
 				if !price.Value.Equal(decimal.Zero) {
 					balance = balance.Add(rs.balanceUnits.Mul(price.Value))
+					netBalanceAgg = netBalanceAgg.Add(rs.netBalanceUnits.Mul(price.Value))
 				} else {
 					balance = balance.Add(rs.balance)
+					netBalanceAgg = netBalanceAgg.Add(rs.netBalance)
 				}
 			}
 
 		}
 
 		gain := balance.Add(withdrawal).Sub(investment)
-		netInvestment := investment.Sub(withdrawal)
 		networths = append(networths, Networth{
 			Date:                start,
 			InvestmentAmount:    investment,
@@ -166,7 +182,7 @@ func computeNetworthTimeline(db *gorm.DB, postings []posting.Posting, computeBal
 			GainAmount:          gain,
 			BalanceAmount:       balance,
 			BalanceUnits:        balanceUnits,
-			NetInvestmentAmount: netInvestment,
+			NetInvestmentAmount: netBalanceAgg,
 		})
 
 		if len(postings) == 0 && balance.Abs().LessThan(decimal.NewFromFloat(0.01)) {
